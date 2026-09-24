@@ -23,31 +23,31 @@ Instead of relying on generic weather APIs or proprietary foreign data, every la
 ```mermaid
 flowchart TB
     subgraph SRC["Public Indian Data Sources"]
-        R[IMD DWR Network<br/>39+ radars via pyiwr/Py-ART]
-        S[ISRO MOSDAC<br/>INSAT-3DR/3DS Imager - IR/VIS/WV]
-        L[ILLN (IITM) + GPM-LIS/WWLLN<br/>lightning strikes/flashes]
-        M[NCMRWF IMDAA/NGFS/NCUM<br/>CAPE, shear, moisture]
-        BB[BharatBench Kaggle<br/>MoES ERA5-derived India benchmark]
+        R["IMD DWR Network<br/>39+ radars via pyiwr/Py-ART"]
+        S["ISRO MOSDAC<br/>INSAT-3DR/3DS Imager - IR/VIS/WV"]
+        L["ILLN (IITM) + GPM-LIS/WWLLN<br/>lightning strikes/flashes"]
+        M["NCMRWF IMDAA/NGFS/NCUM<br/>CAPE, shear, moisture"]
+        BB["BharatBench Kaggle<br/>MoES ERA5-derived India benchmark"]
     end
 
     subgraph ING["Ingestion & Quality Control Layer (Phase 0)"]
-        DWR_IN[IMD DWR QC & Polar-to-Cartesian]
-        INS_IN[MOSDAC INSAT BT Calibration & Reprojection]
-        LGT_IN[Lightning Flash-Density Rasterizer]
-        NWP_IN[NCMRWF Covariate Extraction]
+        DWR_IN["IMD DWR QC & Polar-to-Cartesian"]
+        INS_IN["MOSDAC INSAT BT Calibration & Reprojection"]
+        LGT_IN["Lightning Flash-Density Rasterizer"]
+        NWP_IN["NCMRWF Covariate Extraction"]
     end
 
     subgraph PROC["Multi-Sensor Fusion & Feature Layer (Phase 1)"]
-        REG[Spatial & Temporal Regridder 0.02°]
-        EXT[Convective Feature Extractor<br/>VIL, Echo Top, BT Gradient, Motion Vectors]
-        ZARR[(Zarr Cloud-Native Data Lake)]
+        REG["Spatial & Temporal Regridder 0.02 deg"]
+        EXT["Convective Feature Extractor<br/>VIL, Echo Top, BT Gradient, Motion Vectors"]
+        ZARR[("Zarr Cloud-Native Data Lake")]
     end
 
     subgraph ML["AI/ML Nowcasting Core (Phase 2 & Phase 3)"]
-        P2_BASE[Phase 2: Baseline Nowcaster<br/>PySTEPS Optical Flow + tobac Cell Tracking]
-        P3_PRE[Phase 3: Pretraining Module<br/>Masked Spatiotemporal Autoencoder on BharatBench]
-        P3_TRANS[Phase 3: Earthformer Transformer Core<br/>Spatiotemporal Cuboid Attention Model]
-        VERIF[Meteorological Evaluator<br/>CSI, POD, FAR, FSS Metrics]
+        P2_BASE["Phase 2: Baseline Nowcaster<br/>PySTEPS Optical Flow + tobac Cell Tracking"]
+        P3_PRE["Phase 3: Pretraining Module<br/>Masked Spatiotemporal Autoencoder on BharatBench"]
+        P3_TRANS["Phase 3: Earthformer Transformer Core<br/>Spatiotemporal Cuboid Attention Model"]
+        VERIF["Meteorological Evaluator<br/>CSI, POD, FAR, FSS Metrics"]
     end
 
     R --> DWR_IN

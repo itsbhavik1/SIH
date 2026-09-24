@@ -1,3 +1,6 @@
+# Local Demo & Scratch Scripts
+run_demo_pipeline.py
+
 # Python cache
 __pycache__/
 *.py[cod]

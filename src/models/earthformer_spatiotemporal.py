@@ -1,21 +1,27 @@
 """
-Phase 3 Earthformer / MetNet-3 Deep Spatiotemporal Transformer Model.
-PyTorch Implementation of multi-sensor attention-based spatiotemporal neural network.
-Fuses high-resolution radar, geostationary satellite, lightning, and NWP covariates to predict 0-6h convective evolution.
+Phase 3 Earthformer / MetNet-3 Deep Spatiotemporal Transformer Architecture.
+PyTorch Neural Network for fusing high-resolution multi-sensor streams over India.
+
+Inputs:  (B, T_in=6, C_in=12, H, W) - 60 min multi-channel history (Radar, INSAT, Lightning, NWP)
+Outputs: (B, T_out=36, C_out=2, H, W) - 0-6 hour forecast sequence
+         - Channel 0: Radar Max Reflectivity (dBZ)
+         - Channel 1: Cloud-to-Ground Lightning Flash Density Probability [0, 1]
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from typing import Tuple
+from typing import Tuple, Optional
 
 class CuboidSelfAttention(nn.Module):
-    """Spatio-Temporal Cuboid Attention Block for learning convective dynamics."""
+    """3D Cuboid Spatiotemporal Self-Attention Block."""
 
     def __init__(self, embed_dim: int, num_heads: int = 4):
         super().__init__()
+        self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
+
         self.qkv = nn.Linear(embed_dim, embed_dim * 3)
         self.proj = nn.Linear(embed_dim, embed_dim)
 
@@ -23,19 +29,19 @@ class CuboidSelfAttention(nn.Module):
         # x shape: (B, T, H, W, C)
         B, T, H, W, C = x.shape
         x_flat = x.view(B, T * H * W, C)
-        
+
         qkv = self.qkv(x_flat).reshape(B, T * H * W, 3, self.num_heads, self.head_dim).permute(2, 0, 3, 1, 4)
         q, k, v = qkv[0], qkv[1], qkv[2]
-        
+
         attn = (q @ k.transpose(-2, -1)) * (self.head_dim ** -0.5)
         attn = F.softmax(attn, dim=-1)
-        
+
         out = (attn @ v).transpose(1, 2).reshape(B, T * H * W, C)
         out = self.proj(out).reshape(B, T, H, W, C)
         return out
 
 class EarthformerBlock(nn.Module):
-    """Transformer Encoder Block with Spatiotemporal Cuboid Attention and FeedForward Network."""
+    """Transformer Encoder Block with LayerNorm, Cuboid Attention, and GELU MLP."""
 
     def __init__(self, embed_dim: int, num_heads: int = 4, mlp_ratio: float = 4.0):
         super().__init__()
@@ -55,9 +61,7 @@ class EarthformerBlock(nn.Module):
 
 class EarthformerIndiaNowcaster(nn.Module):
     """
-    Spatiotemporal Transformer Architecture for India Convective Storm & Lightning Nowcasting.
-    Input:  (B, T_in=6, C_in=12, H=128, W=128) - Multi-Sensor History (Radar, INSAT, Lightning, NWP)
-    Output: (B, T_out=36, C_out=2, H=128, W=128) - Forecast Reflectivity (dBZ) & Lightning Flash Density Probability
+    Full Spatiotemporal Transformer Model for Convective Storm & Lightning Prediction.
     """
 
     def __init__(
@@ -73,7 +77,7 @@ class EarthformerIndiaNowcaster(nn.Module):
         self.history_steps = history_steps
         self.forecast_steps = forecast_steps
 
-        # Spatial patch embedding stem (Downsamples spatial dimensions by 4x for efficiency)
+        # 2D Spatial Patch Downsampling Stem (4x spatial reduction)
         self.patch_embed = nn.Sequential(
             nn.Conv2d(in_channels, embed_dim // 2, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(embed_dim // 2),
@@ -83,15 +87,15 @@ class EarthformerIndiaNowcaster(nn.Module):
             nn.GELU()
         )
 
-        # Spatiotemporal Transformer Encoder
+        # Spatiotemporal Transformer Blocks
         self.encoder_blocks = nn.ModuleList([
             EarthformerBlock(embed_dim=embed_dim, num_heads=4) for _ in range(depth)
         ])
 
-        # Temporal expansion projection (6 steps -> 36 forecast steps)
+        # Linear Temporal Expansion (6 history steps -> 36 forecast steps)
         self.temporal_expand = nn.Linear(history_steps, forecast_steps)
 
-        # Spatial Decoder / Upsampler stem (Upsamples 4x back to full spatial resolution)
+        # Spatial Decoder Stem (4x upsampling back to original spatial grid)
         self.decoder = nn.Sequential(
             nn.ConvTranspose2d(embed_dim, embed_dim // 2, kernel_size=4, stride=2, padding=1),
             nn.BatchNorm2d(embed_dim // 2),
@@ -100,7 +104,7 @@ class EarthformerIndiaNowcaster(nn.Module):
         )
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x shape: (B, T_in, C_in, H, W)
+        # x: (B, T_in, C_in, H, W)
         B, T_in, C_in, H, W = x.shape
 
         # Patch Embed per timestep
@@ -110,11 +114,10 @@ class EarthformerIndiaNowcaster(nn.Module):
 
         feat = feat.view(B, T_in, C_emb, H_sub, W_sub).permute(0, 1, 3, 4, 2) # (B, T_in, H_sub, W_sub, C_emb)
 
-        # Pass through Transformer blocks
         for block in self.encoder_blocks:
             feat = block(feat)
 
-        # Expand Temporal Dimension to forecast horizon: (B, T_in, H_sub, W_sub, C_emb) -> (B, T_out, H_sub, W_sub, C_emb)
+        # Expand temporal dimension
         feat_t = feat.permute(0, 2, 3, 4, 1) # (B, H_sub, W_sub, C_emb, T_in)
         feat_t_expanded = self.temporal_expand(feat_t) # (B, H_sub, W_sub, C_emb, T_out)
         feat_expanded = feat_t_expanded.permute(0, 4, 3, 1, 2) # (B*T_out, C_emb, H_sub, W_sub)
@@ -124,15 +127,14 @@ class EarthformerIndiaNowcaster(nn.Module):
         _, C_out, H_out, W_out = out.shape
 
         out = out.view(B, self.forecast_steps, C_out, H_out, W_out)
-        
-        # Apply physical activations: Non-negative Reflectivity & Sigmoid Lightning Probability
+
+        # Physical output activations: Non-negative Reflectivity & Sigmoid Lightning Probability
         reflectivity = F.relu(out[:, :, 0:1, :, :])
         lightning_prob = torch.sigmoid(out[:, :, 1:2, :, :])
 
         return torch.cat([reflectivity, lightning_prob], dim=2)
 
 if __name__ == "__main__":
-    # Sanity test model forward pass
     model = EarthformerIndiaNowcaster(
         in_channels=12,
         out_channels=2,
@@ -141,8 +143,8 @@ if __name__ == "__main__":
         embed_dim=64,
         depth=2
     )
-    dummy_input = torch.randn(2, 6, 12, 128, 128) # Batch=2, History=60min, Channels=12, 128x128 crop
+    dummy_input = torch.randn(2, 6, 12, 128, 128)
     output = model(dummy_input)
-    print("Earthformer Spatiotemporal Model Verification:")
-    print(f"Input shape:  {dummy_input.shape}")
-    print(f"Output shape: {output.shape} (Batch, Forecast_Steps=36, Out_Channels=2, H=128, W=128)")
+    print("Earthformer Spatiotemporal Transformer Verified:")
+    print(f"Input Shape:  {dummy_input.shape}")
+    print(f"Output Shape: {output.shape} (B, Forecast_Steps=36, Out_Channels=2, H=128, W=128)")

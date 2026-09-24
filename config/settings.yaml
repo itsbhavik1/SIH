@@ -1,0 +1,74 @@
+# AI/ML Nowcasting System Settings (India Domain)
+
+spatial_grid:
+  name: "India_Standard_Grid"
+  min_lon: 68.0
+  max_lon: 98.0
+  min_lat: 6.0
+  max_lat: 38.0
+  resolution_deg: 0.02 # ~2 km resolution (1500 x 1600 grid points)
+  projection: "EPSG:4326"
+
+temporal:
+  nowcast_horizon_hours: 6
+  time_step_minutes: 10
+  history_steps: 6 # 60 minutes history (6 x 10 min)
+  forecast_steps: 36 # 6 hours ahead (36 x 10 min)
+
+datasets:
+  imd_dwr:
+    stations_count: 39
+    variables: ["DBZH", "VRAD", "ZDR", "KDP", "VIL", "ECHOTOP"]
+    raw_scan_interval_min: 10
+    wavelengths: ["S-band", "C-band", "X-band"]
+    data_format: "CfRadial / NetCDF"
+
+  mosdac_insat:
+    satellites: ["INSAT-3D", "INSAT-3DR", "INSAT-3DS"]
+    channels:
+      - "TIR1" # Thermal IR (10.8 um) - Cloud top temperature
+      - "TIR2" # Thermal IR 2 (12.0 um)
+      - "MIR"  # Mid IR (3.9 um)
+      - "WV"   # Water Vapor (6.9 um)
+      - "VIS"  # Visible (0.65 um)
+    scan_interval_min: 15
+    data_format: "HDF5"
+
+  lightning:
+    networks: ["ILLN", "GPM_LIS", "WWLLN"]
+    accumulation_window_min: 10
+    density_grid_res_deg: 0.02
+
+  ncmrwf:
+    datasets: ["IMDAA", "NGFS", "NCUM"]
+    resolution_km: 12
+    variables:
+      - "CAPE" # Convective Available Potential Energy (J/kg)
+      - "CIN"  # Convective Inhibition (J/kg)
+      - "PWAT" # Precipitable Water (kg/m2)
+      - "SHEAR_0_6KM" # Bulk Wind Shear (m/s)
+      - "TMP_850" # Temperature at 850 hPa
+      - "RH_700" # Relative Humidity at 700 hPa
+
+  bharatbench:
+    source: "Kaggle maslab/bharatbench"
+    base_resolution_deg: 0.25
+    variables: ["t2m", "msl", "u10", "v10", "tp", "cape", "tcwv"]
+
+storage:
+  zarr_store_path: "data/zarr_lake/india_convective_cube.zarr"
+  raw_cache_dir: "data/raw"
+  processed_dir: "data/processed"
+  model_checkpoint_dir: "checkpoints"
+
+models:
+  optical_flow:
+    method: "lucas_kanade" # PySTEPS optical flow algorithm
+    n_cascade_levels: 3
+  earthformer:
+    patch_size: [4, 4]
+    embed_dim: 128
+    depth: 6
+    num_heads: 8
+    in_channels: 12 # Radar + INSAT channels + NWP covariates
+    out_channels: 2 # Reflectivity + Lightning Probability

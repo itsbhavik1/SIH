@@ -1,0 +1,19 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Data & Lake stores
+data/
+*.zarr/
+*.nc
+*.hdf5
+checkpoints/
+
+# Virtual environment & IDE
+.venv/
+venv/
+ENV/
+.vscode/
+.idea/
